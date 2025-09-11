@@ -22,7 +22,7 @@ export default async function handler(req, res) {
       REDIRECT_URI
     } = process.env;
 
-    // تبادل الكود بتوكنات (مهم: x-www-form-urlencoded)
+    // تبادل الكود بتوكنات (x-www-form-urlencoded)
     const form = new URLSearchParams();
     form.set("grant_type", "authorization_code");
     form.set("code", code);
@@ -47,10 +47,10 @@ export default async function handler(req, res) {
     // TODO: خزّن tokens في قاعدة بياناتك واربطها بالمتجر (store_id) عبر state أو من JWT داخل tokens.authorization
     // مثال: const storeId = decodeJwt(tokens.authorization).sub
 
-    // وجّه المستخدم لصفحة نجاح نظيفة
-   res.writeHead(302, { Location: "/api/installed-success" });
-res.end();
+    // وجّه المستخدم لصفحة نجاح ستاتيكية داخل public/
+    res.writeHead(302, { Location: "/installed-success" });
     return res.end();
+
   } catch (e) {
     console.error(e);
     return res.status(500).send("Server Error");
