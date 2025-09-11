@@ -48,7 +48,8 @@ export default async function handler(req, res) {
     // مثال: const storeId = decodeJwt(tokens.authorization).sub
 
     // وجّه المستخدم لصفحة نجاح نظيفة
-    res.writeHead(302, { Location: "/installed-success" });
+   res.writeHead(302, { Location: "/api/installed-success" });
+res.end();
     return res.end();
   } catch (e) {
     console.error(e);
