@@ -7,23 +7,7 @@ export default async function handler(req, res) {
     if (error) {
       return res
         .status(400)
-        .send(`OAuth cancelled: ${error}${error_description ? " - " + error_description : ""}`);
-    }
 
-    // لو دخلت مباشرة على callback بدون ما تبدأ التفويض
-    if (!code) {
-      return res.status(400).send("Missing ?code");
-    }
-
-    const {
-      ZID_CLIENT_ID,
-      ZID_CLIENT_SECRET,
-      ZID_TOKEN_URL,
-      REDIRECT_URI
-    } = process.env;
-
-    // تبادل الكود بتوكنات (x-www-form-urlencoded)
-    const form = new URLSearchParams();
     form.set("grant_type", "authorization_code");
     form.set("code", code);
     form.set("redirect_uri", REDIRECT_URI);
