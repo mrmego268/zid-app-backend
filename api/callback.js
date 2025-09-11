@@ -1,8 +1,19 @@
+// api/callback.js
 export default async function handler(req, res) {
   try {
     const { code, state, error, error_description } = req.query || {};
-    if (error) return res.status(400).send(`OAuth Error: ${error} ${error_description || ""}`);
-    if (!code) return res.status(400).send("Missing ?code");
+
+    // لو زد رجّعت إلغاء/خطأ (مثلاً access_denied)، وضّحه صريح
+    if (error) {
+      return res
+        .status(400)
+        .send(`OAuth cancelled: ${error}${error_description ? " - " + error_description : ""}`);
+    }
+
+    // لو دخلت مباشرة على callback بدون ما تبدأ التفويض
+    if (!code) {
+      return res.status(400).send("Missing ?code");
+    }
 
     const {
       ZID_CLIENT_ID,
@@ -11,6 +22,7 @@ export default async function handler(req, res) {
       REDIRECT_URI
     } = process.env;
 
+    // تبادل الكود بتوكنات (مهم: x-www-form-urlencoded)
     const form = new URLSearchParams();
     form.set("grant_type", "authorization_code");
     form.set("code", code);
@@ -25,20 +37,21 @@ export default async function handler(req, res) {
     });
 
     const tokens = await tokenResp.json();
+
     if (!tokenResp.ok) {
-      // سجل الخطأ في اللوج فقط، لا تعرض تفاصيل للمستخدم
+      // سجّل في اللوج للتشخيص، لا تفضح التفاصيل للمستخدم
       console.error("Token exchange failed:", tokens);
       return res.status(400).send("Token exchange failed.");
     }
 
-    // TODO: خزّن tokens في قاعدة بياناتك واربطها بالمتجر (مثلاً عبر state أو من JWT)
-    // مثال: const storeId = decodeJWT(tokens.authorization).sub
+    // TODO: خزّن tokens في قاعدة بياناتك واربطها بالمتجر (store_id) عبر state أو من JWT داخل tokens.authorization
+    // مثال: const storeId = decodeJwt(tokens.authorization).sub
 
     // وجّه المستخدم لصفحة نجاح نظيفة
     res.writeHead(302, { Location: "/installed-success" });
-    res.end();
+    return res.end();
   } catch (e) {
     console.error(e);
-    res.status(500).send("Server Error");
+    return res.status(500).send("Server Error");
   }
 }
