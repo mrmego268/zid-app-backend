@@ -10,7 +10,6 @@ const supabase = createClient(
 
 // هيلبر بسيط للهروب من backticks داخل النصوص
 const esc = (s) => String(s ?? "").replace(/`/g, "\\`");
-
 export default async function handler(req, res) {
   try {
     // الـ snippet سيمرر store_id بالـ query
