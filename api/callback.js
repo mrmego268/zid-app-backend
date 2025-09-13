@@ -48,8 +48,10 @@ export default async function handler(req, res) {
     // مثال: const storeId = decodeJwt(tokens.authorization).sub
 
     // وجّه المستخدم لصفحة نجاح ستاتيكية داخل public/
-    res.writeHead(302, { Location: "/installed-success" });
-    return res.end();
+const successUrl = "https://zid-app-backend.vercel.app/api/installed-success";
+res.writeHead(302, { Location: successUrl });
+return res.end();
+
 
   } catch (e) {
     console.error(e);
