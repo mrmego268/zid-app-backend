@@ -1,140 +1,125 @@
-// api/widget.js
+// /api/widget.js
 import { createClient } from "@supabase/supabase-js";
 
-// نستخدم anon key للقراءة فقط (أفضل من service_role)
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY, // fallback لو ما أضفت anon
-  { auth: { persistSession: false } }
-);
-
-// هيلبر بسيط للهروب من backticks داخل النصوص
-const esc = (s) => String(s ?? "").replace(/`/g, "\\`");
 export default async function handler(req, res) {
   try {
-    // الـ snippet سيمرر store_id بالـ query
-    const storeId = (req.query.store_id || "").toString().trim();
+    const { store_id } = req.query || {};
 
-    // نرجّع جافاسكربت (مش HTML)
-    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-
-    if (!storeId) {
-      return res.status(200).send(`console.warn("widget: missing store_id");`);
+    // 1) تحقق من البارامترات
+    if (!store_id) {
+      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+      return res.status(400).send('console.error("widget: missing store_id");');
     }
 
-    // اقرأ إعدادات المتجر من الجدول
+    // 2) متغيرات البيئة
+    const url = process.env.SUPABASE_URL;
+    const anon = process.env.SUPABASE_ANON_KEY; // نستخدم ANON للقراءة
+
+    if (!url || !anon) {
+      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+      return res
+        .status(500)
+        .send(
+          `console.error("widget: missing env vars", ${JSON.stringify({
+            hasUrl: !!url,
+            hasAnon: !!anon,
+          })});`
+        );
+    }
+
+    const supabase = createClient(url, anon);
+
+    // 3) اجلب إعدادات الواجهة
     const { data, error } = await supabase
       .from("zid_store_settings")
       .select("enabled, delay_ms, headline, message, cta_text, cta_url, theme")
-      .eq("store_id", storeId)
-      .maybeSingle();
+      .eq("store_id", String(store_id))
+      .single();
 
     if (error) {
-      console.error("supabase error:", error);
-      return res.status(200).send(`console.error("widget: supabase error");`);
+      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+      return res
+        .status(500)
+        .send(`console.error("widget: supabase error", ${JSON.stringify(error)});`);
     }
 
-    // لو ما فيه سجل أو معطّل → لا ترسم بوب-أب
     if (!data || data.enabled !== true) {
-      return res.status(200).send(`console.log("widget: disabled/no settings");`);
+      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+      return res.status(200).send("// widget disabled or not found");
     }
 
-    const delay   = Number(data.delay_ms ?? 1500);
-    const head    = esc(data.headline ?? "عرض خاص");
-    const msg     = esc(data.message  ?? "خصم لفترة محدودة");
-    const ctaText = esc(data.cta_text ?? "تسوق الآن");
-    const ctaUrl  = esc(data.cta_url  ?? "#");
-    const theme   = (data.theme || "dark").toLowerCase(); // "dark" | "light"
+    const {
+      delay_ms = 1200,
+      headline = "عرض خاص",
+      message = "خصم 10% اليوم فقط",
+      cta_text = "تسوق الآن",
+      cta_url = "/",
+      theme = "light",
+    } = data;
 
-    // CSS + JS خفيفين للبروب-أب
     const js = `
 (function(){
   try {
-    var baseZ = 2147483000;
-    var isLight = ${JSON.stringify(theme)} === "light";
-    var bg = isLight ? "rgba(255,255,255,.98)" : "#111";
-    var fg = isLight ? "#111" : "#fff";
-    var overlay = "rgba(0,0,0,.45)";
+    if (window.__zid_popup_injected__) return;
+    window.__zid_popup_injected__ = true;
 
-    var css = \`
-.__zid_overlay{position:fixed;inset:0;background:\${overlay};display:flex;align-items:center;justify-content:center;z-index:\${baseZ};font-family:system-ui,Segoe UI,Tahoma,Arial}
-.__zid_box{position:relative;background:\${bg};color:\${fg};max-width:440px;width:92%;border-radius:14px;box-shadow:0 10px 28px rgba(0,0,0,.18);overflow:hidden}
-.__zid_head{padding:16px 18px;font-size:18px;font-weight:800;border-bottom:1px solid rgba(255,255,255,.08)}
-.__zid_body{padding:16px 18px;line-height:1.7}
-.__zid_actions{display:flex;gap:10px;padding:0 18px 18px}
-.__zid_btn{flex:1;padding:11px 14px;border-radius:10px;border:0;cursor:pointer;font-weight:700}
-.__zid_primary{background:\${fg};color:\${bg}}
-.__zid_secondary{background:transparent;color:\${fg};box-shadow:inset 0 0 0 2px \${fg}}
-.__zid_close{position:absolute;top:10px;right:14px;font-size:22px;color:\${fg};cursor:pointer;opacity:.85}
-\`;
-
+    var css = ".zid-popup-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:999999}"+
+              ".zid-popup-card{max-width:420px;width:93%;background:#fff;color:#111;border-radius:12px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.2);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;position:relative}"+
+              ".zid-popup-card.dark{background:#111;color:#fff}"+
+              ".zid-popup-head{font-size:22px;font-weight:700;margin:0 0 10px}"+
+              ".zid-popup-msg{font-size:16px;line-height:1.6;margin:0 0 16px}"+
+              ".zid-popup-cta{display:inline-block;padding:10px 16px;border-radius:8px;background:#1e88e5;color:#fff;text-decoration:none;font-weight:600}"+
+              ".zid-popup-close{position:absolute;right:10px;top:10px;background:transparent;border:none;font-size:20px;cursor:pointer;color:inherit}";
     var style = document.createElement("style");
-    style.textContent = css;
+    style.appendChild(document.createTextNode(css));
     document.head.appendChild(style);
 
     function show(){
-      var wrap = document.createElement("div");
-      wrap.className="__zid_overlay";
+      var overlay = document.createElement("div");
+      overlay.className = "zid-popup-overlay";
+      overlay.addEventListener("click", function(e){ if(e.target === overlay) document.body.removeChild(overlay); });
 
-      var box = document.createElement("div");
-      box.className="__zid_box";
-      wrap.appendChild(box);
+      var card = document.createElement("div");
+      card.className = "zid-popup-card ${theme === "dark" ? "dark" : ""}";
 
-      var head = document.createElement("div");
-      head.className="__zid_head";
-      head.textContent=\`${head}\`;
-      box.appendChild(head);
+      var close = document.createElement("button");
+      close.className = "zid-popup-close";
+      close.innerHTML = "&times;";
+      close.addEventListener("click", function(){ document.body.removeChild(overlay); });
 
-      var body = document.createElement("div");
-      body.className="__zid_body";
-      body.textContent=\`${msg}\`;
-      box.appendChild(body);
+      var h = document.createElement("h3");
+      h.className = "zid-popup-head";
+      h.textContent = ${JSON.stringify(headline)};
 
-      var actions=document.createElement("div");
-      actions.className="__zid_actions";
-      box.appendChild(actions);
+      var p = document.createElement("p");
+      p.className = "zid-popup-msg";
+      p.textContent = ${JSON.stringify(message)};
 
-      var primary=document.createElement("button");
-      primary.className="__zid_btn __zid_primary";
-      primary.textContent=\`${ctaText}\`;
-      primary.onclick=function(){ window.location.href=\`${ctaUrl}\`; close(); };
-      actions.appendChild(primary);
+      var a = document.createElement("a");
+      a.className = "zid-popup-cta";
+      a.href = ${JSON.stringify(cta_url)};
+      a.textContent = ${JSON.stringify(cta_text)};
 
-      var secondary=document.createElement("button");
-      secondary.className="__zid_btn __zid_secondary";
-      secondary.textContent="إغلاق";
-      secondary.onclick=close;
-      actions.appendChild(secondary);
-
-      var closeBtn=document.createElement("div");
-      closeBtn.className="__zid_close";
-      closeBtn.innerHTML="&times;";
-      closeBtn.onclick=close;
-      box.appendChild(closeBtn);
-
-      function close(){
-        if(wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);
-      }
-
-      wrap.addEventListener("click", function(e){ if(e.target===wrap){ close(); } });
-      document.body.appendChild(wrap);
+      card.appendChild(close);
+      card.appendChild(h);
+      card.appendChild(p);
+      card.appendChild(a);
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
     }
 
-    // انتظر قليلًا بعد تحميل الصفحة
-    var delay = ${delay};
-    if (document.readyState === "complete" || document.readyState === "interactive"){
-      setTimeout(show, delay);
-    } else {
-      window.addEventListener("DOMContentLoaded", function(){ setTimeout(show, delay); });
-    }
-  } catch(e){ console.error("widget runtime error", e); }
+    setTimeout(show, ${Number(delay_ms) || 1200});
+  } catch(e) {
+    console.error("widget runtime error", e);
+  }
 })();
 `;
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
     return res.status(200).send(js);
   } catch (e) {
-    console.error("widget handler crash:", e);
-    res.setHeader("Content-Type", "application/javascript");
-    return res.status(200).send(`console.error("widget: crash");`);
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    return res
+      .status(500)
+      .send(`console.error("widget: fatal", ${JSON.stringify(String(e))});`);
   }
 }
